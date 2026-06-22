@@ -1,0 +1,17 @@
+{
+  "name": "habitquest",
+  "version": "1.0.0",
+  "description": "A 2D multiplayer RPG where real-world habits power your character",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=server\" \"npm run dev --workspace=client\"",
+    "install:all": "npm install && npm install --workspace=client && npm install --workspace=server"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
