@@ -19,19 +19,31 @@ export class UIScene extends Phaser.Scene {
 
   _drawStats(char) {
     const pad = 12;
-    const panel = this.add.rectangle(pad, pad, 160, 120, 0x000000, 0.6).setOrigin(0);
-    const stats = [
+    const col1 = [
       `Lv.${char.level}  ${this.registry.get('context').user.username}`,
-      `STR ${char.strength}`,
-      `INT ${char.intelligence}`,
-      `AGI ${char.agility}`,
-      `VIT ${char.vitality}`,
+      `STR  ${char.strength}`,
+      `AGI  ${char.agility}`,
+      `VIT  ${char.vitality}`,
+      `CON  ${char.constitution}`,
     ];
-    stats.forEach((line, i) => {
+    const col2 = [
+      `💰 ${char.gold}g`,
+      `INT  ${char.intelligence}`,
+      `WIS  ${char.wisdom}`,
+      `FOC  ${char.focus}`,
+    ];
+
+    this.add.rectangle(pad, pad, 260, 110, 0x000000, 0.65).setOrigin(0);
+
+    col1.forEach((line, i) => {
       this.add.text(pad + 8, pad + 8 + i * 20, line, {
-        fontSize: '12px',
-        color: '#ffffff',
-        fontFamily: 'monospace',
+        fontSize: '11px', color: i === 0 ? '#ffd700' : '#ffffff', fontFamily: 'monospace',
+      });
+    });
+
+    col2.forEach((line, i) => {
+      this.add.text(pad + 138, pad + 8 + i * 20, line, {
+        fontSize: '11px', color: i === 0 ? '#ffd700' : '#ffffff', fontFamily: 'monospace',
       });
     });
   }

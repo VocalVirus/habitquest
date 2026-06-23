@@ -14,6 +14,18 @@ router.get('/me', async (req, res) => {
   res.json(rows[0]);
 });
 
+const VALID_SPRITES = ['char_1', 'char_2', 'char_3', 'char_4'];
+
+router.patch('/me/sprite', async (req, res) => {
+  const { sprite } = req.body;
+  if (!VALID_SPRITES.includes(sprite)) return res.status(400).json({ error: 'Invalid sprite' });
+  const { rows } = await pool.query(
+    'UPDATE characters SET sprite = $1 WHERE user_id = $2 RETURNING sprite',
+    [sprite, req.user.userId]
+  );
+  res.json(rows[0]);
+});
+
 router.post('/me/position', async (req, res) => {
   const { x, y, map_id } = req.body;
   const { rows } = await pool.query(

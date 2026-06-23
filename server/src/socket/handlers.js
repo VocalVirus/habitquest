@@ -29,12 +29,20 @@ export function registerSocketHandlers(io) {
       socket.emit('players:current', mapPlayers);
     });
 
-    socket.on('player:move', ({ x, y }) => {
+    socket.on('player:move', ({ x, y, dir }) => {
       const player = onlinePlayers.get(socket.id);
       if (!player) return;
       player.x = x;
       player.y = y;
-      socket.to(player.mapId).emit('player:moved', { socketId: socket.id, x, y });
+      player.dir = dir;
+      socket.to(player.mapId).emit('player:moved', { socketId: socket.id, x, y, dir });
+    });
+
+    socket.on('player:stop', ({ dir }) => {
+      const player = onlinePlayers.get(socket.id);
+      if (!player) return;
+      player.dir = dir;
+      socket.to(player.mapId).emit('player:stopped', { socketId: socket.id, dir });
     });
 
     socket.on('chat:message', ({ text }) => {

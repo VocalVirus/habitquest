@@ -15,10 +15,14 @@ CREATE TABLE IF NOT EXISTS characters (
   sprite      VARCHAR(64) DEFAULT 'hero_default',
   level       INT DEFAULT 1,
   -- RPG stats derived from real-world habits (0-100)
-  strength    INT DEFAULT 0,   -- gym time
-  intelligence INT DEFAULT 0,  -- study time
-  agility     INT DEFAULT 0,   -- walking / steps
-  vitality    INT DEFAULT 0,   -- sleep quality/hours
+  strength     INT DEFAULT 0,   -- gym time
+  intelligence INT DEFAULT 0,   -- study time
+  agility      INT DEFAULT 0,   -- walking / steps
+  vitality     INT DEFAULT 0,   -- sleep quality/hours
+  wisdom       INT DEFAULT 0,   -- reading
+  constitution INT DEFAULT 0,   -- water intake
+  focus        INT DEFAULT 0,   -- meditation
+  gold         INT DEFAULT 0,   -- money saved
   -- World position
   map_id      VARCHAR(64) DEFAULT 'town',
   pos_x       FLOAT DEFAULT 400,
@@ -43,7 +47,7 @@ FOR EACH ROW EXECUTE FUNCTION create_character_for_user();
 CREATE TABLE IF NOT EXISTS habit_logs (
   id          SERIAL PRIMARY KEY,
   user_id     INT REFERENCES users(id) ON DELETE CASCADE,
-  habit_type  VARCHAR(32) NOT NULL CHECK (habit_type IN ('gym', 'study', 'walk', 'sleep')),
+  habit_type  VARCHAR(32) NOT NULL CHECK (habit_type IN ('gym', 'study', 'walk', 'sleep', 'reading', 'water', 'meditation', 'save_money')),
   value       NUMERIC NOT NULL,         -- hours, km, etc.
   unit        VARCHAR(16) NOT NULL,     -- 'hours', 'km', 'steps'
   logged_date TIMESTAMPTZ DEFAULT NOW()

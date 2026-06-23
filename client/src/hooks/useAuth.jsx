@@ -11,7 +11,11 @@ export function AuthProvider({ children }) {
     return stored ? JSON.parse(stored) : null;
   });
 
-  const [token, setToken] = useState(() => localStorage.getItem('habitquest_token'));
+  const [token, setToken] = useState(() => {
+    const t = localStorage.getItem('habitquest_token');
+    if (t) axios.defaults.headers.common['Authorization'] = `Bearer ${t}`;
+    return t;
+  });
 
   function saveSession(userData, jwt) {
     setUser(userData);

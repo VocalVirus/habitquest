@@ -5,15 +5,21 @@ import axios from 'axios';
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 const HABIT_TYPES = [
-  { type: 'gym',   label: 'Gym / Workout', unit: 'hours', statLabel: 'Strength',     icon: '🏋️' },
-  { type: 'study', label: 'Study / Work',  unit: 'hours', statLabel: 'Intelligence', icon: '📚' },
-  { type: 'walk',  label: 'Walk / Run',    unit: 'km',    statLabel: 'Agility',       icon: '🚶' },
-  { type: 'sleep', label: 'Sleep',         unit: 'hours', statLabel: 'Vitality',      icon: '😴' },
+  { type: 'gym',        label: 'Gym / Workout',   unit: 'hours',   stat: 'Strength',     icon: '🏋️' },
+  { type: 'walk',       label: 'Walk / Run',       unit: 'km',      stat: 'Agility',      icon: '🚶' },
+  { type: 'sleep',      label: 'Sleep',            unit: 'hours',   stat: 'Vitality',     icon: '😴' },
+  { type: 'water',      label: 'Water Intake',     unit: 'glasses', stat: 'Constitution', icon: '💧' },
+  { type: 'study',      label: 'Study / Work',     unit: 'hours',   stat: 'Intelligence', icon: '🎓' },
+  { type: 'reading',    label: 'Reading',          unit: 'hours',   stat: 'Wisdom',       icon: '📖' },
+  { type: 'meditation', label: 'Meditation',       unit: 'minutes', stat: 'Focus',        icon: '🧘' },
+  { type: 'save_money', label: 'Money Saved',      unit: 'dollars', stat: 'Gold',         icon: '💰' },
 ];
+
+const DEFAULT_VALUES = Object.fromEntries(HABIT_TYPES.map((h) => [h.type, '']));
 
 export default function HabitsPage() {
   const navigate = useNavigate();
-  const [values, setValues] = useState({ gym: '', study: '', walk: '', sleep: '' });
+  const [values, setValues] = useState(DEFAULT_VALUES);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -44,17 +50,17 @@ export default function HabitsPage() {
       <h1>Today's Habits</h1>
       <p>Log your real-world activities to power up your character</p>
       <form onSubmit={handleSubmit} className="habits-form">
-        {HABIT_TYPES.map(({ type, label, unit, statLabel, icon }) => (
+        {HABIT_TYPES.map(({ type, label, unit, stat, icon }) => (
           <div key={type} className="habit-row">
             <span className="habit-icon">{icon}</span>
             <label>
               <strong>{label}</strong>
-              <small>+{statLabel}</small>
+              <small>+{stat}</small>
             </label>
             <input
               type="number"
               min="0"
-              step="0.5"
+              step={type === 'save_money' ? '1' : '0.5'}
               placeholder={`0 ${unit}`}
               value={values[type]}
               onChange={(e) => setValues({ ...values, [type]: e.target.value })}
