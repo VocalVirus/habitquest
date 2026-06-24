@@ -13,7 +13,7 @@ export default function RegisterPage() {
     setError('');
     try {
       await register(form.username, form.email, form.password);
-      navigate('/habits');
+      navigate('/customize');
     } catch (err) {
       setError(err.response?.data?.error || 'Registration failed');
     }

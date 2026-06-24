@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { TownScene } from './scenes/TownScene.js';
 import { UIScene } from './scenes/UIScene.js';
+import { InteriorScene } from './scenes/InteriorScene.js';
 
 export function createGame(parent, context) {
   return new Phaser.Game({
@@ -14,7 +15,7 @@ export function createGame(parent, context) {
       default: 'arcade',
       arcade: { gravity: { y: 0 }, debug: false },
     },
-    scene: [TownScene, UIScene],
+    scene: [TownScene, InteriorScene, UIScene],
     callbacks: {
       preBoot: (game) => {
         game.registry.set('context', context);

@@ -5,6 +5,7 @@ import RegisterPage from './pages/RegisterPage.jsx';
 import HabitsPage from './pages/HabitsPage.jsx';
 import GamePage from './pages/GamePage.jsx';
 import CustomizePage from './pages/CustomizePage.jsx';
+import LeaderboardPage from './pages/LeaderboardPage.jsx';
 import './App.css';
 
 export default function App() {
@@ -17,6 +18,7 @@ export default function App() {
       <Route path="/habits" element={user ? <HabitsPage /> : <Navigate to="/login" />} />
       <Route path="/game" element={user ? <GamePage /> : <Navigate to="/login" />} />
       <Route path="/customize" element={user ? <CustomizePage /> : <Navigate to="/login" />} />
+      <Route path="/leaderboard" element={<LeaderboardPage />} />
       <Route path="*" element={<Navigate to={user ? '/game' : '/login'} />} />
     </Routes>
   );

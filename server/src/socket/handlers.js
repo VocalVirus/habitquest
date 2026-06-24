@@ -19,10 +19,18 @@ export function registerSocketHandlers(io) {
     console.log(`Player connected: ${socket.user.userId}`);
 
     socket.on('player:join', ({ username, x, y, mapId, sprite }) => {
+      // Evict any stale socket entries for this user (reconnect / page-refresh scenario)
+      for (const [id, p] of onlinePlayers.entries()) {
+        if (p.userId === socket.user.userId && id !== socket.id) {
+          io.to(p.mapId).emit('player:left', { socketId: id });
+          onlinePlayers.delete(id);
+        }
+      }
+
       onlinePlayers.set(socket.id, { userId: socket.user.userId, username, x, y, mapId, sprite });
       socket.join(mapId);
       socket.to(mapId).emit('player:joined', { socketId: socket.id, username, x, y, sprite });
-      // Send current map players to the joining player
+
       const mapPlayers = [...onlinePlayers.entries()]
         .filter(([id, p]) => id !== socket.id && p.mapId === mapId)
         .map(([id, p]) => ({ socketId: id, ...p }));

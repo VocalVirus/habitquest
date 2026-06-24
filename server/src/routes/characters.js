@@ -3,6 +3,27 @@ import { pool } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
+
+// Public — no auth required
+router.get('/leaderboard', async (_req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT u.username, c.level, c.sprite,
+             c.strength, c.agility, c.vitality, c.constitution,
+             c.intelligence, c.wisdom, c.focus, c.gold
+      FROM characters c
+      JOIN users u ON c.user_id = u.id
+      ORDER BY c.level DESC,
+               (c.strength + c.agility + c.vitality + c.constitution
+                + c.intelligence + c.wisdom + c.focus) DESC
+      LIMIT 50
+    `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load leaderboard' });
+  }
+});
+
 router.use(requireAuth);
 
 router.get('/me', async (req, res) => {

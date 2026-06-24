@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/auth.js';
 import habitRoutes from './routes/habits.js';
 import characterRoutes from './routes/characters.js';
+import shopRoutes from './routes/shop.js';
 import { registerSocketHandlers } from './socket/handlers.js';
 
 dotenv.config();
@@ -22,6 +23,7 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/habits', habitRoutes);
 app.use('/api/characters', characterRoutes);
+app.use('/api/shop', shopRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 

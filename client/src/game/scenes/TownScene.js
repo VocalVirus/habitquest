@@ -11,65 +11,71 @@ const COLS       = 60;
 const ROWS       = 45;
 const WALK_DIRS  = ['up', 'left', 'down', 'right'];
 
-// NPC definitions
-const NPCS = [
-  {
-    id: 'tailor',
-    label: 'Tailor',
-    x: 26 * TILE, y: 22 * TILE,
-    sprite: 'npc_tailor',
-    action: 'open-customize',
-    prompt: 'Press E to change appearance',
-    dialog: null, // generated based on stats
-  },
-  {
-    id: 'oracle',
-    label: 'Oracle',
-    x: 33 * TILE, y: 22 * TILE,
-    sprite: 'npc_oracle',
-    action: 'show-dialog',
-    prompt: 'Press E to consult the Oracle',
-    dialog: null,
-  },
+// Buildings use composited sprites in /buildings/. W/H must match those images.
+// H=224: top 128px = roof from above (north), bottom 96px = facade/door (south)
+const BUILDINGS = [
+  { id: 'store',    label: 'General Store',       worldX: 15 * TILE, worldY: 13 * TILE, texture: 'building_store',    W: 288, H: 224 },
+  { id: 'inn',      label: 'The Sleepy Bear Inn', worldX: 37 * TILE, worldY: 13 * TILE, texture: 'building_inn',      W: 288, H: 224 },
+  { id: 'tailor',   label: 'Tailor Shop',         worldX: 15 * TILE, worldY: 29 * TILE, texture: 'building_tailor',   W: 288, H: 224 },
+  // Town Hall centred on vertical path (cols 29-30): worldX = 29.5*32 - 576/2 = 640
+  { id: 'townhall', label: 'Town Hall',           worldX: 20 * TILE, worldY:  3 * TILE, texture: 'building_townhall', W: 576, H: 224 },
 ];
 
-// Tree grid positions (col, row) — avoids paths (cols 29-30, rows 22-23) and NPCs
+function isExcluded(col, row) {
+  if (col >= 27 && col <= 32) return true;          // vertical path + buffer
+  if (row >= 20 && row <= 25) return true;           // horizontal path + buffer
+  // Buildings now 224px tall (7 tiles): worldY/32 → worldY/32+6
+  if (col >= 15 && col <= 23 && row >= 13 && row <= 19) return true; // Store
+  if (col >= 37 && col <= 45 && row >= 13 && row <= 19) return true; // Inn
+  if (col >= 15 && col <= 23 && row >= 29 && row <= 35) return true; // Tailor
+  if (col >= 20 && col <= 37 && row >=  3 && row <=  9) return true; // Town Hall
+  if (col >= 43 && col <= 59 && row >= 29 && row <= 44) return true; // SE pond
+  return false;
+}
+
 const TREE_POSITIONS = (() => {
-  const positions = [];
+  const out = [];
   for (let gx = 0; gx < 11; gx++) {
     for (let gy = 0; gy < 8; gy++) {
       const col = gx * 5 + 3;
       const row = gy * 5 + 3;
-      if (col >= 27 && col <= 32) continue; // skip vertical path + buffer
-      if (row >= 20 && row <= 25) continue; // skip horizontal path + buffer
-      if (col >= 23 && col <= 35 && row >= 18 && row <= 27) continue; // skip NPC area
-      positions.push({ col, row });
+      if (!isExcluded(col, row)) out.push({ col, row });
     }
   }
-  return positions;
+  return out;
 })();
 
 export class TownScene extends Phaser.Scene {
   constructor() {
     super('TownScene');
     this.otherPlayers = {};
-    this.npcObjects   = [];
-    this.activeNpc    = null;
-    this.dialogBox    = null;
+    this.doorZones    = [];
+    this.activeDoor   = null;
+    this.chatActive   = false;
+    this.activeBubbles = [];
+  }
+
+  init(data) {
+    this.returnData   = data || null;
+    this.sessionItems = data?.sessionItems || [];
   }
 
   preload() {
     const { character } = this.registry.get('context');
     const sprite = character?.sprite || 'char_1';
 
-    this.load.spritesheet('player',      `/sprites/${sprite}.png`,  { frameWidth: FRAME_W, frameHeight: FRAME_H });
-    this.load.spritesheet('other_player',`/sprites/char_1.png`,     { frameWidth: FRAME_W, frameHeight: FRAME_H });
-    this.load.spritesheet('npc_tailor',  `/sprites/char_2.png`,     { frameWidth: FRAME_W, frameHeight: FRAME_H });
-    this.load.spritesheet('npc_oracle',  `/sprites/char_4.png`,     { frameWidth: FRAME_W, frameHeight: FRAME_H });
-    this.load.spritesheet('terrain_grass','/tiles/grass.png',       { frameWidth: TILE, frameHeight: TILE });
-    this.load.spritesheet('terrain_dirt', '/tiles/dirt.png',        { frameWidth: TILE, frameHeight: TILE });
-    this.load.spritesheet('tree_trunk',   '/tiles/trunk.png',       { frameWidth: TILE, frameHeight: TILE });
-    this.load.spritesheet('tree_top',     '/tiles/treetop.png',     { frameWidth: TILE, frameHeight: TILE });
+    this.load.spritesheet('player', `/sprites/${sprite}.png`, { frameWidth: FRAME_W, frameHeight: FRAME_H });
+    ['char_1','char_2','char_3','char_4'].forEach((k) =>
+      this.load.spritesheet(k, `/sprites/${k}.png`, { frameWidth: FRAME_W, frameHeight: FRAME_H })
+    );
+    this.load.spritesheet('terrain_grass', '/tiles/grass.png',  { frameWidth: TILE, frameHeight: TILE });
+    this.load.spritesheet('terrain_dirt',  '/tiles/dirt.png',   { frameWidth: TILE, frameHeight: TILE });
+    this.load.spritesheet('tree_trunk',    '/tiles/trunk.png',  { frameWidth: TILE, frameHeight: TILE });
+    this.load.spritesheet('tree_top',      '/tiles/treetop.png',{ frameWidth: TILE, frameHeight: TILE });
+    this.load.image('building_store',    '/buildings/building_store.png');
+    this.load.image('building_inn',      '/buildings/building_inn.png');
+    this.load.image('building_tailor',   '/buildings/building_tailor.png');
+    this.load.image('building_townhall', '/buildings/building_townhall.png');
   }
 
   create() {
@@ -80,151 +86,157 @@ export class TownScene extends Phaser.Scene {
     this.physics.world.setBounds(0, 0, worldW, worldH);
     this.cameras.main.setBounds(0, 0, worldW, worldH);
 
-    this._buildWorld();
+    this._buildGround();
+    this._buildPond();
+    this._buildPaths();
+    this._buildBuildings();
     this._buildTrees();
-    this._buildNPCs(character);
+    this._buildAnims();
 
-    // Animations
-    ['player', 'other_player', 'npc_tailor', 'npc_oracle'].forEach((key) => {
-      WALK_DIRS.forEach((dir, row) => {
-        const animKey = `${key}_walk_${dir}`;
-        if (!this.anims.exists(animKey)) {
-          this.anims.create({
-            key: animKey,
-            frames: this.anims.generateFrameNumbers(key, { start: row * 9, end: row * 9 + 8 }),
-            frameRate: 9,
-            repeat: -1,
-          });
-        }
-      });
-    });
+    const startX = this.returnData?.returnX ?? 29 * TILE + 16;
+    const startY = this.returnData?.returnY ?? 22 * TILE + 16;
 
-    // Player
-    this.player = this.physics.add.sprite(29 * TILE + 16, 22 * TILE + 16, 'player', 18);
-    this.player.setCollideWorldBounds(true);
-    this.player.setDepth(2);
+    this.player = this.physics.add.sprite(startX, startY, 'player', 18);
+    this.player.setCollideWorldBounds(true).setDepth(5);
     this.cameras.main.startFollow(this.player);
-    this.lastDir = 'down';
+    this.lastDir = this.returnData?.returnDir || 'down';
 
-    const str = character?.strength || 0;
-    this.speed = Math.round(BASE_SPEED + (str / 100) * (MAX_SPEED - BASE_SPEED));
+    this.normalSpeed = Math.round(BASE_SPEED + ((character?.strength || 0) / 100) * (MAX_SPEED - BASE_SPEED));
+    this.speed = this.normalSpeed;
 
-    // Tree trunk collision
+    if (this.sessionItems.includes('speed_potion')) {
+      this.speed = this.normalSpeed * 2;
+      this.time.delayedCall(60000, () => { this.speed = this.normalSpeed; });
+      this.sessionItems = this.sessionItems.filter(i => i !== 'speed_potion');
+    }
+
     this.physics.add.collider(this.player, this.trunkGroup);
+    this.physics.add.collider(this.player, this.buildingWalls);
+    this.physics.add.collider(this.player, this.pondWall);
 
-    // Input
-    this.cursors  = this.input.keyboard.createCursorKeys();
-    this.wasd     = this.input.keyboard.addKeys({ up: 'W', left: 'A', down: 'S', right: 'D' });
-    this.eKey     = this.input.keyboard.addKey('E');
+    this.cursors = this.input.keyboard.createCursorKeys();
+    this.wasd    = this.input.keyboard.addKeys({ up: 'W', left: 'A', down: 'S', right: 'D' });
+    this.input.keyboard.on('keydown-E', () => this._tryEnterDoor());
 
-    // E key interaction
-    this.input.keyboard.on('keydown-E', () => this._tryInteract(character));
-
-    // Prompt text (shown near bottom of screen, fixed to camera)
     this.promptText = this.add.text(worldW / 2, worldH - 60, '', {
       fontSize: '14px', color: '#ffd700', fontFamily: 'monospace',
       backgroundColor: '#000000cc', padding: { x: 12, y: 6 },
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(20).setVisible(false);
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(30).setVisible(false);
 
     this._setupSocket(user, token, character);
     this.lastEmit  = 0;
     this.wasMoving = false;
+
+    this._onChatSend   = ({ text }) => this.socket?.emit('chat:message', { text });
+    this._onChatActive = (v) => {
+      this.chatActive = v;
+    };
+    this.game.events.on('chat:send',   this._onChatSend);
+    this.game.events.on('chat:active', this._onChatActive);
   }
 
-  _buildWorld() {
+  _buildGround() {
     for (let x = 0; x < COLS; x++) {
       for (let y = 0; y < ROWS; y++) {
         const frame = (x + y) % 7 === 0 ? 3 : (x * y) % 11 === 0 ? 5 : 4;
         this.add.image(x * TILE + 16, y * TILE + 16, 'terrain_grass', frame).setDepth(0);
       }
     }
-    // Horizontal dirt path
-    for (let x = 0; x < COLS; x++) {
-      this.add.image(x * TILE + 16, 22 * TILE + 16, 'terrain_dirt', 4).setDepth(0);
-      this.add.image(x * TILE + 16, 23 * TILE + 16, 'terrain_dirt', 4).setDepth(0);
-    }
-    // Vertical dirt path
-    for (let y = 0; y < ROWS; y++) {
-      this.add.image(29 * TILE + 16, y * TILE + 16, 'terrain_dirt', 4).setDepth(0);
-      this.add.image(30 * TILE + 16, y * TILE + 16, 'terrain_dirt', 4).setDepth(0);
-    }
+  }
+
+  _buildPond() {
+    const C1 = 44, C2 = 58, R1 = 30, R2 = 43;
+    const pW = (C2 - C1 + 1) * TILE;
+    const pH = (R2 - R1 + 1) * TILE;
+    const cx = C1 * TILE + pW / 2;
+    const cy = R1 * TILE + pH / 2;
+    // Solid water body (dark blue base + lighter inner fill)
+    this.add.rectangle(cx, cy, pW,      pH,      0x0d3d5e).setDepth(1);
+    this.add.rectangle(cx, cy, pW - 32, pH - 32, 0x1a6b9a).setDepth(1);
+    this.add.rectangle(cx, cy, pW - 64, pH - 64, 0x2882b8).setDepth(1);
+    // Invisible collision wall
+    this.pondWall = this.add.rectangle(cx, cy, pW, pH, 0x000000, 0);
+    this.physics.add.existing(this.pondWall, true);
+  }
+
+  _buildPaths() {
+    const dirt = (c, r) => this.add.image(c * TILE + 16, r * TILE + 16, 'terrain_dirt', 4).setDepth(1);
+    // Main cross
+    for (let x = 0; x < COLS; x++) { dirt(x, 22); dirt(x, 23); }
+    for (let y = 0; y < ROWS; y++) { dirt(29, y); dirt(30, y); }
+    // Store/Inn: worldY=416, H=224 → bottom edge row 20 → path rows 20-21 to horizontal
+    for (let r = 20; r <= 21; r++) { dirt(19, r); dirt(20, r); }
+    for (let r = 20; r <= 21; r++) { dirt(41, r); dirt(42, r); }
+    // Tailor: worldY=928, H=224 → bottom edge row 36 → path rows 24-36 south from horizontal
+    for (let r = 24; r <= 36; r++) { dirt(19, r); dirt(20, r); }
+  }
+
+  _buildBuildings() {
+    this.buildingWalls = this.physics.add.staticGroup();
+
+    BUILDINGS.forEach((b) => {
+      this.add.image(b.worldX, b.worldY, b.texture).setOrigin(0, 0).setDepth(3);
+
+      this.add.text(b.worldX + b.W / 2, b.worldY - 14, b.label, {
+        fontSize: '11px', color: '#ffd700', fontFamily: 'monospace',
+        backgroundColor: '#000000bb', padding: { x: 6, y: 3 },
+      }).setOrigin(0.5).setDepth(20);
+
+      // Collision covers building body; leave bottom 32px open for door approach
+      const wallRect = this.add.rectangle(
+        b.worldX + b.W / 2,
+        b.worldY + (b.H - 32) / 2,
+        b.W, b.H - 32,
+        0x000000, 0
+      );
+      this.physics.add.existing(wallRect, true);
+      this.buildingWalls.add(wallRect);
+
+      const doorX = b.worldX + b.W / 2;
+      const doorY = b.worldY + b.H + 4;
+      this.doorZones.push({
+        x: doorX, y: doorY, radius: 48,
+        id: b.id, label: b.label,
+        returnX: doorX, returnY: doorY + 48,
+      });
+    });
   }
 
   _buildTrees() {
     this.trunkGroup = this.physics.add.staticGroup();
-
     TREE_POSITIONS.forEach(({ col, row }) => {
       const x = col * TILE + 16;
       const y = row * TILE + 16;
-      // Trunk (with collision)
       const trunk = this.trunkGroup.create(x, y, 'tree_trunk', 0);
-      trunk.setDepth(1).refreshBody();
-      // Treetop (decorative, above everything)
+      trunk.setDepth(2).refreshBody();
       this.add.image(x, y - TILE, 'tree_top', 0).setDepth(10);
     });
   }
 
-  _buildNPCs(character) {
-    NPCS.forEach((npc) => {
-      const sprite = this.add.sprite(npc.x, npc.y, npc.sprite, 18).setDepth(2);
-      const label  = this.add.text(npc.x, npc.y - 40, npc.label, {
-        fontSize: '11px', color: '#ffd700', fontFamily: 'monospace',
-        backgroundColor: '#000000aa', padding: { x: 6, y: 3 },
-      }).setOrigin(0.5).setDepth(20);
-
-      this.npcObjects.push({ ...npc, sprite, label });
+  _buildAnims() {
+    ['player','char_1','char_2','char_3','char_4'].forEach((key) => {
+      WALK_DIRS.forEach((dir, row) => {
+        const animKey = `${key}_walk_${dir}`;
+        if (!this.anims.exists(animKey)) {
+          this.anims.create({
+            key: animKey,
+            frames: this.anims.generateFrameNumbers(key, { start: row * 9, end: row * 9 + 8 }),
+            frameRate: 9, repeat: -1,
+          });
+        }
+      });
     });
   }
 
-  _tryInteract(character) {
-    if (!this.activeNpc) return;
-
-    if (this.activeNpc.action === 'open-customize') {
-      this.game.events.emit('open-customize');
-      return;
-    }
-
-    if (this.activeNpc.action === 'show-dialog') {
-      if (this.dialogBox) { this._hideDialog(); return; }
-      this._showOracleDialog(character);
-    }
-  }
-
-  _showOracleDialog(character) {
-    const str = character?.strength     || 0;
-    const int = character?.intelligence || 0;
-    const wis = character?.wisdom       || 0;
-    const foc = character?.focus        || 0;
-    const vit = character?.vitality     || 0;
-    const gold = character?.gold        || 0;
-
-    const lines = ['The Oracle speaks...', ''];
-    if (str >= 50)  lines.push(`⚔️  Your body grows strong. STR ${str}.`);
-    else            lines.push(`⚔️  Visit the gym more. STR ${str}.`);
-    if (int >= 50)  lines.push(`📚  Your mind is sharp. INT ${int}.`);
-    else            lines.push(`📚  Study harder, young one. INT ${int}.`);
-    if (wis >= 30)  lines.push(`📖  Wisdom flows through you. WIS ${wis}.`);
-    if (foc >= 30)  lines.push(`🧘  Your focus is remarkable. FOC ${foc}.`);
-    if (vit < 30)   lines.push(`😴  You need more sleep. VIT ${vit}.`);
-    if (gold > 0)   lines.push(`💰  ${gold} gold saved. Keep it up!`);
-    lines.push('', '[Press E to close]');
-
-    const cam = this.cameras.main;
-    const x = cam.scrollX + cam.width  / 2;
-    const y = cam.scrollY + cam.height / 2;
-
-    const bg   = this.add.rectangle(x, y, 400, lines.length * 22 + 24, 0x000000, 0.85).setDepth(30);
-    const text = this.add.text(x, y, lines.join('\n'), {
-      fontSize: '12px', color: '#ffffff', fontFamily: 'monospace', align: 'center',
-    }).setOrigin(0.5).setDepth(31);
-
-    this.dialogBox = { bg, text };
-  }
-
-  _hideDialog() {
-    this.dialogBox?.bg.destroy();
-    this.dialogBox?.text.destroy();
-    this.dialogBox = null;
+  _tryEnterDoor() {
+    if (!this.activeDoor) return;
+    this.scene.start('InteriorScene', {
+      buildingId:    this.activeDoor.id,
+      buildingLabel: this.activeDoor.label,
+      returnX:       this.activeDoor.returnX,
+      returnY:       this.activeDoor.returnY,
+      sessionItems:  [...this.sessionItems],
+    });
   }
 
   _setupSocket(user, token, character) {
@@ -232,31 +244,26 @@ export class TownScene extends Phaser.Scene {
     this.socket.on('connect', () => {
       this.socket.emit('player:join', {
         username: user.username,
-        x: this.player.x,
-        y: this.player.y,
+        x: this.player.x, y: this.player.y,
         mapId: 'town',
         sprite: character?.sprite || 'char_1',
       });
     });
-
-    this.socket.on('players:current', (players) => players.forEach((p) => this._addOtherPlayer(p)));
-    this.socket.on('player:joined',   (p) => this._addOtherPlayer(p));
-
-    this.socket.on('player:moved', ({ socketId, x, y, dir }) => {
+    this.socket.on('players:current', (ps) => ps.forEach((p) => this._addOtherPlayer(p)));
+    this.socket.on('player:joined',   (p)  => this._addOtherPlayer(p));
+    this.socket.on('player:moved',  ({ socketId, x, y, dir }) => {
       const op = this.otherPlayers[socketId];
       if (!op) return;
       op.sprite.setPosition(x, y);
       op.label.setPosition(x, y - 36);
-      if (dir) op.sprite.anims.play(`other_player_walk_${dir}`, true);
+      if (dir) op.sprite.anims.play(`${op.spriteKey}_walk_${dir}`, true);
     });
-
     this.socket.on('player:stopped', ({ socketId, dir }) => {
       const op = this.otherPlayers[socketId];
       if (!op) return;
       op.sprite.anims.stop();
       op.sprite.setFrame(WALK_DIRS.indexOf(dir || 'down') * 9);
     });
-
     this.socket.on('player:left', ({ socketId }) => {
       const op = this.otherPlayers[socketId];
       if (!op) return;
@@ -264,62 +271,118 @@ export class TownScene extends Phaser.Scene {
       op.label.destroy();
       delete this.otherPlayers[socketId];
     });
+
+    this.socket.on('chat:message', (msg) => {
+      this.game.events.emit('chat:received', msg);
+      this._showBubble(msg);
+    });
   }
 
-  _addOtherPlayer({ socketId, username, x, y }) {
-    const sprite = this.add.sprite(x, y, 'other_player', 18).setDepth(2);
+  _showBubble({ username, text }) {
+    const { user } = this.registry.get('context');
+    let target = null;
+    if (user.username === username) {
+      target = this.player;
+    } else {
+      const entry = Object.values(this.otherPlayers).find((p) => p.label.text === username);
+      if (entry) target = entry.sprite;
+    }
+    if (!target) return;
+
+    const shortened = text.length > 60 ? text.slice(0, 57) + '…' : text;
+    const bubble = this.add.text(target.x, target.y - 72, shortened, {
+      fontSize: '10px',
+      color: '#ffffff',
+      fontFamily: 'monospace',
+      backgroundColor: '#000000dd',
+      padding: { x: 6, y: 4 },
+      wordWrap: { width: 170 },
+    }).setOrigin(0.5, 1).setDepth(100);
+
+    this.activeBubbles.push({ bubble, getPos: () => target.active ? { x: target.x, y: target.y } : null });
+
+    this.time.delayedCall(3500, () => {
+      this.tweens.add({
+        targets: bubble,
+        alpha: 0,
+        duration: 500,
+        onComplete: () => bubble.destroy(),
+      });
+    });
+  }
+
+  _addOtherPlayer({ socketId, username, x, y, sprite: spriteKey }) {
+    const key = ['char_1','char_2','char_3','char_4'].includes(spriteKey) ? spriteKey : 'char_1';
+    const sprite = this.add.sprite(x, y, key, 18).setDepth(5);
     const label  = this.add.text(x, y - 36, username, {
       fontSize: '10px', color: '#ffffff', fontFamily: 'monospace',
     }).setOrigin(0.5).setDepth(20);
-    this.otherPlayers[socketId] = { sprite, label };
+    this.otherPlayers[socketId] = { sprite, label, spriteKey: key };
   }
 
   update(time) {
-    // Movement
-    const vel = { x: 0, y: 0 };
-    if (this.cursors.left.isDown  || this.wasd.left.isDown)  vel.x = -this.speed;
-    else if (this.cursors.right.isDown || this.wasd.right.isDown) vel.x = this.speed;
-    if (this.cursors.up.isDown    || this.wasd.up.isDown)    vel.y = -this.speed;
-    else if (this.cursors.down.isDown  || this.wasd.down.isDown)  vel.y = this.speed;
+    // Track speech bubble positions
+    this.activeBubbles = this.activeBubbles.filter(({ bubble, getPos }) => {
+      if (!bubble.active) return false;
+      const pos = getPos();
+      if (pos) bubble.setPosition(pos.x, pos.y - 72);
+      return true;
+    });
 
-    const moving = vel.x !== 0 || vel.y !== 0;
+    // Freeze movement while chat input is focused
+    if (this.chatActive) {
+      this.player.setVelocity(0, 0);
+      if (this.wasMoving) {
+        this.player.anims.stop();
+        this.player.setFrame(WALK_DIRS.indexOf(this.lastDir) * 9);
+        this.wasMoving = false;
+        this.socket?.emit('player:stop', { dir: this.lastDir });
+      }
+      return;
+    }
+
+    const vel = { x: 0, y: 0 };
+    if      (this.cursors.left.isDown  || this.wasd.left.isDown)  vel.x = -this.speed;
+    else if (this.cursors.right.isDown || this.wasd.right.isDown) vel.x =  this.speed;
+    if      (this.cursors.up.isDown    || this.wasd.up.isDown)    vel.y = -this.speed;
+    else if (this.cursors.down.isDown  || this.wasd.down.isDown)  vel.y =  this.speed;
+
+    const moving    = vel.x !== 0 || vel.y !== 0;
+    const prevMoved = this.wasMoving;
     if (moving) {
-      if (vel.x < 0)      this.lastDir = 'left';
+      if      (vel.x < 0) this.lastDir = 'left';
       else if (vel.x > 0) this.lastDir = 'right';
       else if (vel.y < 0) this.lastDir = 'up';
       else                this.lastDir = 'down';
       this.player.anims.play(`player_walk_${this.lastDir}`, true);
-    } else if (this.wasMoving) {
+    } else if (prevMoved) {
       this.player.anims.stop();
       this.player.setFrame(WALK_DIRS.indexOf(this.lastDir) * 9);
     }
     this.wasMoving = moving;
     this.player.setVelocity(vel.x, vel.y);
 
-    // NPC proximity
-    let nearestNpc  = null;
-    let nearestDist = 80;
-    this.npcObjects.forEach((npc) => {
-      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, npc.x, npc.y);
-      if (dist < nearestDist) { nearestDist = dist; nearestNpc = npc; }
+    // Door proximity check
+    let nearDoor = null;
+    let nearDist = 999;
+    this.doorZones.forEach((door) => {
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, door.x, door.y);
+      if (d < door.radius && d < nearDist) { nearDist = d; nearDoor = door; }
     });
-
-    if (nearestNpc !== this.activeNpc) {
-      this.activeNpc = nearestNpc;
-      if (nearestNpc) {
-        this.promptText.setText(nearestNpc.prompt).setVisible(true);
+    if (nearDoor !== this.activeDoor) {
+      this.activeDoor = nearDoor;
+      if (nearDoor) {
+        this.promptText.setText(`Press E to enter ${nearDoor.label}`).setVisible(true);
       } else {
         this.promptText.setVisible(false);
-        this._hideDialog();
       }
     }
 
-    // Socket emit
     if (time - this.lastEmit > 100) {
       if (moving) {
-        this.socket.emit('player:move', { x: this.player.x, y: this.player.y, dir: this.lastDir });
-      } else if (this.wasMoving) {
-        this.socket.emit('player:stop', { dir: this.lastDir });
+        this.socket?.emit('player:move', { x: this.player.x, y: this.player.y, dir: this.lastDir });
+      } else if (prevMoved) {
+        this.socket?.emit('player:stop', { dir: this.lastDir });
       }
       this.lastEmit = time;
     }
@@ -327,5 +390,7 @@ export class TownScene extends Phaser.Scene {
 
   shutdown() {
     this.socket?.disconnect();
+    this.game.events.off('chat:send',   this._onChatSend);
+    this.game.events.off('chat:active', this._onChatActive);
   }
 }
