@@ -48,11 +48,12 @@ const TREE_POSITIONS = (() => {
 export class TownScene extends Phaser.Scene {
   constructor() {
     super('TownScene');
-    this.otherPlayers = {};
-    this.doorZones    = [];
-    this.activeDoor   = null;
-    this.chatActive   = false;
+    this.otherPlayers  = {};
+    this.doorZones     = [];
+    this.activeDoor    = null;
+    this.chatActive    = false;
     this.activeBubbles = [];
+    this.joystick      = { active: false, dx: 0, dy: 0, baseX: 0, baseY: 0, pointerId: null };
   }
 
   init(data) {
@@ -121,9 +122,12 @@ export class TownScene extends Phaser.Scene {
     this.promptText = this.add.text(worldW / 2, worldH - 60, '', {
       fontSize: '14px', color: '#ffd700', fontFamily: 'monospace',
       backgroundColor: '#000000cc', padding: { x: 12, y: 6 },
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(30).setVisible(false);
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(30).setVisible(false)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this._tryEnterDoor());
 
     this._setupSocket(user, token, character);
+    this._setupJoystick();
     this.lastEmit  = 0;
     this.wasMoving = false;
 
@@ -347,6 +351,12 @@ export class TownScene extends Phaser.Scene {
     if      (this.cursors.up.isDown    || this.wasd.up.isDown)    vel.y = -this.speed;
     else if (this.cursors.down.isDown  || this.wasd.down.isDown)  vel.y =  this.speed;
 
+    if (this.joystick?.active) {
+      const DEAD = 0.2;
+      if (Math.abs(this.joystick.dx) > DEAD) vel.x = this.joystick.dx > 0 ? this.speed : -this.speed;
+      if (Math.abs(this.joystick.dy) > DEAD) vel.y = this.joystick.dy > 0 ? this.speed : -this.speed;
+    }
+
     const moving    = vel.x !== 0 || vel.y !== 0;
     const prevMoved = this.wasMoving;
     if (moving) {
@@ -388,9 +398,63 @@ export class TownScene extends Phaser.Scene {
     }
   }
 
+  _setupJoystick() {
+    if (!this.sys.game.device.input.touch) return;
+
+    const gfx   = this.add.graphics().setScrollFactor(0).setDepth(55);
+    const thumb  = this.add.circle(0, 0, 22, 0xffffff, 0.85).setScrollFactor(0).setDepth(56).setVisible(false);
+    this._joyGfx = { gfx, thumb };
+
+    const drawBase = (x, y) => {
+      gfx.clear();
+      gfx.fillStyle(0x000000, 0.35);
+      gfx.fillCircle(x, y, 55);
+      gfx.lineStyle(2, 0xffffff, 0.4);
+      gfx.strokeCircle(x, y, 55);
+    };
+
+    this.input.on('pointerdown', (p) => {
+      if (this.joystick.active) return;
+      if (p.x < this.cameras.main.width / 2) return; // right half only
+      this.joystick.active    = true;
+      this.joystick.pointerId = p.id;
+      this.joystick.baseX     = p.x;
+      this.joystick.baseY     = p.y;
+      drawBase(p.x, p.y);
+      thumb.setPosition(p.x, p.y).setVisible(true);
+    });
+
+    this.input.on('pointermove', (p) => {
+      if (!this.joystick.active || p.id !== this.joystick.pointerId) return;
+      const dx   = p.x - this.joystick.baseX;
+      const dy   = p.y - this.joystick.baseY;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const cap  = Math.min(dist, 55);
+      const ang  = Math.atan2(dy, dx);
+      thumb.setPosition(
+        this.joystick.baseX + Math.cos(ang) * cap,
+        this.joystick.baseY + Math.sin(ang) * cap,
+      );
+      const dead = 8;
+      this.joystick.dx = dist > dead ? dx / dist : 0;
+      this.joystick.dy = dist > dead ? dy / dist : 0;
+    });
+
+    this.input.on('pointerup', (p) => {
+      if (p.id !== this.joystick.pointerId) return;
+      this.joystick.active = false;
+      this.joystick.dx     = 0;
+      this.joystick.dy     = 0;
+      gfx.clear();
+      thumb.setVisible(false);
+    });
+  }
+
   shutdown() {
     this.socket?.disconnect();
     this.game.events.off('chat:send',   this._onChatSend);
     this.game.events.off('chat:active', this._onChatActive);
+    this._joyGfx?.gfx.destroy();
+    this._joyGfx?.thumb.destroy();
   }
 }
