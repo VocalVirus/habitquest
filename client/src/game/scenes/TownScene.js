@@ -257,15 +257,14 @@ export class TownScene extends Phaser.Scene {
     });
     this.socket.on('players:current', (ps) => ps.forEach((p) => this._addOtherPlayer(p)));
     this.socket.on('player:joined',   (p)  => this._addOtherPlayer(p));
-    this.socket.on('player:moved',  ({ socketId, x, y, dir }) => {
+    this.socket.on('player:moved',  ({ socketId, x, y, dir, vx, vy }) => {
       const op = this.otherPlayers[socketId];
       if (!op) return;
       op.targetX = x;
       op.targetY = y;
       op.lastUpdateTime = this.time.now;
-      const [dvx, dvy] = DIR_VEC[dir] || [0, 0];
-      op.velX = dvx * REMOTE_SPEED;
-      op.velY = dvy * REMOTE_SPEED;
+      op.velX = (vx ?? (DIR_VEC[dir]?.[0] ?? 0)) * REMOTE_SPEED;
+      op.velY = (vy ?? (DIR_VEC[dir]?.[1] ?? 0)) * REMOTE_SPEED;
       if (dir) op.sprite.anims.play(`${op.spriteKey}_walk_${dir}`, true);
     });
     this.socket.on('player:stopped', ({ socketId, dir }) => {
@@ -408,7 +407,7 @@ export class TownScene extends Phaser.Scene {
 
     if (time - this.lastEmit > 100) {
       if (moving) {
-        this.socket?.emit('player:move', { x: this.player.x, y: this.player.y, dir: this.lastDir });
+        this.socket?.emit('player:move', { x: this.player.x, y: this.player.y, dir: this.lastDir, vx: vel.x / this.speed, vy: vel.y / this.speed });
       } else if (prevMoved) {
         this.socket?.emit('player:stop', { dir: this.lastDir });
       }

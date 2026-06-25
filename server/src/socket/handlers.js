@@ -37,13 +37,13 @@ export function registerSocketHandlers(io) {
       socket.emit('players:current', mapPlayers);
     });
 
-    socket.on('player:move', ({ x, y, dir }) => {
+    socket.on('player:move', ({ x, y, dir, vx, vy }) => {
       const player = onlinePlayers.get(socket.id);
       if (!player) return;
       player.x = x;
       player.y = y;
       player.dir = dir;
-      socket.to(player.mapId).emit('player:moved', { socketId: socket.id, x, y, dir });
+      socket.to(player.mapId).emit('player:moved', { socketId: socket.id, x, y, dir, vx, vy });
     });
 
     socket.on('player:stop', ({ dir }) => {
