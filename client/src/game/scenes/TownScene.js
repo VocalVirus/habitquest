@@ -258,8 +258,8 @@ export class TownScene extends Phaser.Scene {
     this.socket.on('player:moved',  ({ socketId, x, y, dir }) => {
       const op = this.otherPlayers[socketId];
       if (!op) return;
-      op.sprite.setPosition(x, y);
-      op.label.setPosition(x, y - 36);
+      op.targetX = x;
+      op.targetY = y;
       if (dir) op.sprite.anims.play(`${op.spriteKey}_walk_${dir}`, true);
     });
     this.socket.on('player:stopped', ({ socketId, dir }) => {
@@ -321,10 +321,17 @@ export class TownScene extends Phaser.Scene {
     const label  = this.add.text(x, y - 36, username, {
       fontSize: '10px', color: '#ffffff', fontFamily: 'monospace',
     }).setOrigin(0.5).setDepth(20);
-    this.otherPlayers[socketId] = { sprite, label, spriteKey: key };
+    this.otherPlayers[socketId] = { sprite, label, spriteKey: key, targetX: x, targetY: y };
   }
 
   update(time) {
+    const LERP = 0.3;
+    Object.values(this.otherPlayers).forEach((op) => {
+      op.sprite.x = Phaser.Math.Linear(op.sprite.x, op.targetX, LERP);
+      op.sprite.y = Phaser.Math.Linear(op.sprite.y, op.targetY, LERP);
+      op.label.setPosition(op.sprite.x, op.sprite.y - 36);
+    });
+
     // Track speech bubble positions
     this.activeBubbles = this.activeBubbles.filter(({ bubble, getPos }) => {
       if (!bubble.active) return false;
