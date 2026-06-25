@@ -9,7 +9,9 @@ const FRAME_H    = 64;
 const TILE       = 32;
 const COLS       = 60;
 const ROWS       = 45;
-const WALK_DIRS  = ['up', 'left', 'down', 'right'];
+const WALK_DIRS   = ['up', 'left', 'down', 'right'];
+const REMOTE_SPEED = 200;
+const DIR_VEC      = { up: [0, -1], left: [-1, 0], down: [0, 1], right: [1, 0] };
 
 // Buildings use composited sprites in /buildings/. W/H must match those images.
 // H=224: top 128px = roof from above (north), bottom 96px = facade/door (south)
@@ -260,11 +262,17 @@ export class TownScene extends Phaser.Scene {
       if (!op) return;
       op.targetX = x;
       op.targetY = y;
+      op.lastUpdateTime = this.time.now;
+      const [dvx, dvy] = DIR_VEC[dir] || [0, 0];
+      op.velX = dvx * REMOTE_SPEED;
+      op.velY = dvy * REMOTE_SPEED;
       if (dir) op.sprite.anims.play(`${op.spriteKey}_walk_${dir}`, true);
     });
     this.socket.on('player:stopped', ({ socketId, dir }) => {
       const op = this.otherPlayers[socketId];
       if (!op) return;
+      op.velX = 0;
+      op.velY = 0;
       op.sprite.anims.stop();
       op.sprite.setFrame(WALK_DIRS.indexOf(dir || 'down') * 9);
     });
@@ -321,14 +329,17 @@ export class TownScene extends Phaser.Scene {
     const label  = this.add.text(x, y - 36, username, {
       fontSize: '10px', color: '#ffffff', fontFamily: 'monospace',
     }).setOrigin(0.5).setDepth(20);
-    this.otherPlayers[socketId] = { sprite, label, spriteKey: key, targetX: x, targetY: y };
+    this.otherPlayers[socketId] = { sprite, label, spriteKey: key, targetX: x, targetY: y, velX: 0, velY: 0, lastUpdateTime: 0 };
   }
 
   update(time) {
     const LERP = 0.3;
     Object.values(this.otherPlayers).forEach((op) => {
-      op.sprite.x = Phaser.Math.Linear(op.sprite.x, op.targetX, LERP);
-      op.sprite.y = Phaser.Math.Linear(op.sprite.y, op.targetY, LERP);
+      const dt = Math.min((this.time.now - op.lastUpdateTime) / 1000, 0.15);
+      const predX = op.targetX + op.velX * dt;
+      const predY = op.targetY + op.velY * dt;
+      op.sprite.x = Phaser.Math.Linear(op.sprite.x, predX, LERP);
+      op.sprite.y = Phaser.Math.Linear(op.sprite.y, predY, LERP);
       op.label.setPosition(op.sprite.x, op.sprite.y - 36);
     });
 
